@@ -54,6 +54,7 @@ apk add --no-cache git vim
 
 ## Configuration
 
+- `privileged` - Run container with privileged mode (default: `false`)
 - `name` - Container name (alphanumeric, hyphens, underscores only)
 - `init` - Init script to run on container creation
 - `gui` - Enable GUI passthrough (default: `false`)

@@ -12,6 +12,9 @@ pub struct Config {
   pub name: String,
 
   #[serde(default)]
+  pub privileged: bool,
+
+  #[serde(default)]
   pub gui: bool,
 }
 

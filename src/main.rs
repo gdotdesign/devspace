@@ -147,6 +147,7 @@ fn init_config() -> Result<(), Box<dyn std::error::Error>> {
 fn get_sample_config() -> &'static str {
   r#"name = "myproject"
 image = "docker.io/library/alpine:latest"
+privileged = false
 shell = zsh
 gui = true
 

@@ -144,6 +144,10 @@ impl<'a> Container<'a> {
       args.extend(gui::get_container_args());
     }
 
+    if self.config.privileged {
+      args.push("--privileged".to_string());
+    }
+
     args
   }
 
