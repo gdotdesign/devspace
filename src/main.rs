@@ -33,6 +33,10 @@ enum Commands {
     #[arg(trailing_var_arg = true, required = true)]
     command: Vec<String>,
 
+    /// Run in interactive mode (attaches stdin)
+    #[arg(short, long)]
+    interactive: bool,
+
     /// Toggles verbose output (runtime commands)
     #[arg(short, long)]
     verbose: bool,
@@ -114,9 +118,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Commands::Stop { verbose } => container.stop(verbose).map_err(|e| e.into()),
     Commands::Init | Commands::Version => unreachable!(),
 
-    Commands::Exec { verbose, command } => {
-      container.exec(verbose, &command).map_err(|e| e.into())
-    }
+    Commands::Exec {
+      verbose,
+      interactive,
+      command,
+    } => container
+      .exec(verbose, interactive, &command)
+      .map_err(|e| e.into()),
 
     Commands::Remove { verbose } => {
       container.remove(verbose).map_err(|e| e.into())

@@ -256,20 +256,33 @@ impl<'a> Container<'a> {
       .map_err(|e| format!("Failed to enter container: {}", e))
   }
 
-  pub fn exec(&self, verbose: bool, command: &[String]) -> Result<(), String> {
+  pub fn exec(
+    &self,
+    verbose: bool,
+    interactive: bool,
+    command: &[String],
+  ) -> Result<(), String> {
     self.ensure_running(verbose)?;
 
-    let args = ["exec", "-it", &self.container_name()];
-    let full_args: Vec<String> = args
-      .iter()
-      .map(|s| s.to_string())
-      .chain(command.iter().cloned())
-      .collect();
+    let container_name = self.container_name();
+    let shell = self.config.shell.as_deref().unwrap_or("sh");
+    let mut args = vec!["exec"];
+    if interactive {
+      args.push("-it");
+    } else {
+      args.push("-t");
+    }
+    args.push(&container_name);
+    args.push(shell);
+    args.push("-i");
+    args.push("-c");
+    let command_str = command.join(" ");
+    args.push(&command_str);
+    let full_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     debug!("{} {}", &self.runtime, full_args.join(" "));
 
     let status = Command::new(&self.runtime)
-      .args(args)
-      .args(command)
+      .args(&args)
       .status()
       .map_err(|e| format!("Failed to exec command: {}", e))?;
 
