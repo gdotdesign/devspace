@@ -70,6 +70,7 @@ name = "myproject"           # Container name (alphanumeric, hyphens, underscore
 shell = "sh"                 # Shell to use (default: sh)
 gui = false                  # Enable GUI passthrough (default: false)
 privileged = false           # Run in privileged mode (default: false)
+ports = ["8080:80", "3000:3000"]  # Port mappings to expose (default: [])
 
 init = """
 apk add --no-cache git vim
@@ -84,6 +85,7 @@ apk add --no-cache git vim
 - `gui` - Enable X11/Wayland GUI passthrough (default: `false`)
 - `privileged` - Run container with privileged mode (default: `false`)
 - `init` - Init script to run on container creation (optional)
+- `ports` - List of port mappings to expose (default: `[]`, e.g., `["8080:80", "3000:3000", "5432:5432/tcp"]`)
 
 ## Requirements
 

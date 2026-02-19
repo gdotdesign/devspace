@@ -36,6 +36,7 @@ image = "alpine:latest"
 name = "myproject"
 shell = "sh"
 gui = false
+ports = ["8080:80", "3000:3000"]
 
 init = """
 apk add --no-cache git vim
@@ -60,6 +61,7 @@ apk add --no-cache git vim
 - `gui` - Enable GUI passthrough (default: `false`)
 - `shell` - Shell to use (default: `sh`)
 - `image` - Container image to use
+- `ports` - List of port mappings to expose (e.g., `["8080:80", "3000:3000"]`)
 
 ## Requirements
 

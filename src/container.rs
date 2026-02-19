@@ -148,6 +148,10 @@ impl<'a> Container<'a> {
       args.push("--privileged".to_string());
     }
 
+    for port in &self.config.ports {
+      args.extend(["-p".to_string(), port.clone()]);
+    }
+
     args
   }
 

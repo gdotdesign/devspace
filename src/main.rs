@@ -156,8 +156,9 @@ fn get_sample_config() -> &'static str {
   r#"name = "myproject"
 image = "docker.io/library/alpine:latest"
 privileged = false
-shell = zsh
+shell = "zsh"
 gui = true
+ports = ["8080:8080"]
 
 init = """
 apk add --no-cache zsh git
