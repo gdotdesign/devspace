@@ -119,6 +119,27 @@ impl<'a> Container<'a> {
     !output.stdout.is_empty()
   }
 
+  fn docker_user_flag(&self) -> Option<String> {
+    if self.runtime != "docker" {
+      return None;
+    }
+    let uid = Command::new("id")
+      .arg("-u")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    let gid = Command::new("id")
+      .arg("-g")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    if !uid.is_empty() && !gid.is_empty() {
+      Some(format!("{}:{}", uid, gid))
+    } else {
+      None
+    }
+  }
+
   fn build_container_args(&self) -> Vec<String> {
     let mut args = vec![
       "create".to_string(),
@@ -150,6 +171,10 @@ impl<'a> Container<'a> {
 
     for port in &self.config.ports {
       args.extend(["-p".to_string(), port.clone()]);
+    }
+
+    if self.runtime == "podman" {
+      args.push("--userns=keep-id".to_string());
     }
 
     args
@@ -251,11 +276,17 @@ impl<'a> Container<'a> {
     info!("Entering {}...", self.container_name().bold());
 
     let shell = self.config.shell.as_deref().unwrap_or("sh");
-    let args = ["exec", "-it", &self.container_name(), shell];
+    let user_flag = self.docker_user_flag();
+    let container_name = self.container_name();
+    let mut args = vec!["exec", "-it"];
+    if let Some(ref ug) = user_flag {
+      args.extend(["--user", ug]);
+    }
+    args.extend([container_name.as_str(), shell]);
 
     debug!("{} {}", &self.runtime, args.join(" "));
     Command::new(&self.runtime)
-      .args(args)
+      .args(&args)
       .status()
       .map_err(|e| format!("Failed to enter container: {}", e))
   }
@@ -270,11 +301,15 @@ impl<'a> Container<'a> {
 
     let container_name = self.container_name();
     let shell = self.config.shell.as_deref().unwrap_or("sh");
+    let user_flag = self.docker_user_flag();
     let mut args = vec!["exec"];
     if interactive {
       args.push("-it");
     } else {
       args.push("-t");
+    }
+    if let Some(ref ug) = user_flag {
+      args.extend(["--user", ug]);
     }
     args.push(&container_name);
     args.push(shell);

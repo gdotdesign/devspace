@@ -63,6 +63,10 @@ apk add --no-cache git vim
 - `image` - Container image to use
 - `ports` - List of port mappings to expose (e.g., `["8080:80", "3000:3000"]`)
 
+## Key Behaviors
+
+- **User mapping** - Automatically maps the host user into the container so files created inside have correct ownership. Uses `--userns=keep-id` on Podman and `--user UID:GID` on Docker.
+
 ## Requirements
 
 - Docker or Podman

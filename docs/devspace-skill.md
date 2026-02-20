@@ -98,3 +98,4 @@ apk add --no-cache git vim
 2. **Shell invocation** - Commands run via `shell -i -c "command"` for proper environment setup
 3. **Runtime detection** - Automatically detects between docker and podman
 4. **Persistent containers** - Containers persist between runs until explicitly removed
+5. **User mapping** - Automatically maps the host user into the container so files created inside have correct ownership (Podman: `--userns=keep-id`, Docker: `--user UID:GID`)
