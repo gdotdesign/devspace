@@ -62,6 +62,8 @@ apk add --no-cache git vim
 - `shell` - Shell to use (default: `sh`)
 - `image` - Container image to use
 - `ports` - List of port mappings to expose (e.g., `["8080:80", "3000:3000"]`)
+- `user_mapping` - Map host user into the container (default: `true`); set to `false` to disable all user mapping
+- `chown_dirs` - List of container directories to `chown` to the mapped user on creation (default: `[]`); only applies when `user_mapping = true`
 
 ## Key Behaviors
 

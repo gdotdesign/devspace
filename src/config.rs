@@ -19,6 +19,16 @@ pub struct Config {
 
   #[serde(default)]
   pub ports: Vec<String>,
+
+  #[serde(default)]
+  pub chown_dirs: Vec<String>,
+
+  #[serde(default = "default_true")]
+  pub user_mapping: bool,
+}
+
+fn default_true() -> bool {
+  true
 }
 
 impl Config {

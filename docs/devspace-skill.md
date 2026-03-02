@@ -71,6 +71,8 @@ shell = "sh"                 # Shell to use (default: sh)
 gui = false                  # Enable GUI passthrough (default: false)
 privileged = false           # Run in privileged mode (default: false)
 ports = ["8080:80", "3000:3000"]  # Port mappings to expose (default: [])
+user_mapping = true          # Map host user into container (default: true)
+chown_dirs = ["/var/run"]    # Directories to chown to mapped user on creation (default: [])
 
 init = """
 apk add --no-cache git vim
@@ -86,6 +88,8 @@ apk add --no-cache git vim
 - `privileged` - Run container with privileged mode (default: `false`)
 - `init` - Init script to run on container creation (optional)
 - `ports` - List of port mappings to expose (default: `[]`, e.g., `["8080:80", "3000:3000", "5432:5432/tcp"]`)
+- `user_mapping` - Map host user into the container (default: `true`); set to `false` to disable all user mapping
+- `chown_dirs` - List of container directories to `chown` to the mapped user on creation (default: `[]`); only applies when `user_mapping = true`
 
 ## Requirements
 

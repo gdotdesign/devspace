@@ -53,6 +53,10 @@ impl<'a> Container<'a> {
     format!("devspace-{}", self.config.name)
   }
 
+  fn persist_volume_name(&self) -> String {
+    format!("{}-persist", self.container_name())
+  }
+
   fn run_command(
     &self,
     args: &[&str],
@@ -119,25 +123,38 @@ impl<'a> Container<'a> {
     !output.stdout.is_empty()
   }
 
-  fn docker_user_flag(&self) -> Option<String> {
-    if self.runtime != "docker" {
-      return None;
+  fn docker_user_args(&self) -> Vec<String> {
+    if self.runtime != "docker" || !self.config.user_mapping {
+      return vec![];
     }
+
     let uid = Command::new("id")
       .arg("-u")
       .output()
       .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
       .unwrap_or_default();
+
     let gid = Command::new("id")
       .arg("-g")
       .output()
       .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
       .unwrap_or_default();
-    if !uid.is_empty() && !gid.is_empty() {
-      Some(format!("{}:{}", uid, gid))
-    } else {
-      None
+
+    if uid.is_empty() || gid.is_empty() {
+      return vec![];
     }
+
+    let mut args = vec!["--user".to_string(), format!("{}:{}", uid, gid)];
+
+    if let Ok(user) = env::var("USER") {
+      args.extend(["-e".to_string(), format!("USER={}", user)]);
+      args.extend(["-e".to_string(), format!("LOGNAME={}", user)]);
+    }
+
+    if let Ok(home) = env::var("HOME") {
+      args.extend(["-e".to_string(), format!("HOME={}", home)]);
+    }
+    args
   }
 
   fn build_container_args(&self) -> Vec<String> {
@@ -156,6 +173,16 @@ impl<'a> Container<'a> {
       CONTAINER_WORKSPACE.to_string(),
     ];
 
+    let container_home = if self.config.user_mapping {
+      env::var("HOME").unwrap_or("/root".to_string())
+    } else {
+      "/root".to_string()
+    };
+    args.extend([
+      "-v".to_string(),
+      format!("{}:{}", self.persist_volume_name(), container_home),
+    ]);
+
     if let Ok(term) = env::var("TERM") {
       args.extend(["-e".to_string(), format!("TERM={}", term)]);
     }
@@ -173,7 +200,7 @@ impl<'a> Container<'a> {
       args.extend(["-p".to_string(), port.clone()]);
     }
 
-    if self.runtime == "podman" {
+    if self.runtime == "podman" && self.config.user_mapping {
       args.push("--userns=keep-id".to_string());
     }
 
@@ -242,6 +269,93 @@ impl<'a> Container<'a> {
     self.check_status(stop_status, "stop container")
   }
 
+  fn home_setup_script(&self) -> Option<String> {
+    if self.runtime != "docker" || !self.config.user_mapping {
+      return None;
+    }
+    let uid = Command::new("id")
+      .arg("-u")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    let gid = Command::new("id")
+      .arg("-g")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    let user = env::var("USER").unwrap_or_default();
+    let home = env::var("HOME").unwrap_or_default();
+
+    if uid.is_empty() || gid.is_empty() || user.is_empty() || home.is_empty() {
+      return None;
+    }
+
+    Some(format!(
+      r#"mkdir -p '{home}'
+grep -qF ':{uid}:' /etc/passwd || echo '{user}:x:{uid}:{gid}::{home}:/bin/sh' >> /etc/passwd
+grep -qF ':{gid}:' /etc/group  || echo '{user}:x:{gid}:'                       >> /etc/group
+chown {uid}:{gid} '{home}'"#,
+      home = home,
+      uid = uid,
+      gid = gid,
+      user = user,
+    ))
+  }
+
+  fn chown_dirs_script(&self) -> Option<String> {
+    if self.runtime != "docker"
+      || !self.config.user_mapping
+      || self.config.chown_dirs.is_empty()
+    {
+      return None;
+    }
+    let uid = Command::new("id")
+      .arg("-u")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    let gid = Command::new("id")
+      .arg("-g")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    if uid.is_empty() || gid.is_empty() {
+      return None;
+    }
+    let lines: Vec<String> = self
+      .config
+      .chown_dirs
+      .iter()
+      .map(|dir| format!("mkdir -p '{dir}' && chown -R {uid}:{gid} '{dir}'"))
+      .collect();
+    Some(lines.join("\n"))
+  }
+
+  fn workspace_chown_script(&self) -> Option<String> {
+    if self.runtime != "docker" || !self.config.user_mapping {
+      return None;
+    }
+    let uid = Command::new("id")
+      .arg("-u")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    let gid = Command::new("id")
+      .arg("-g")
+      .output()
+      .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+      .unwrap_or_default();
+    if uid.is_empty() || gid.is_empty() {
+      return None;
+    }
+    Some(format!(
+      "chown -R {uid}:{gid} '{workspace}'",
+      uid = uid,
+      gid = gid,
+      workspace = CONTAINER_WORKSPACE,
+    ))
+  }
+
   fn create(&self, verbose: bool) -> Result<(), String> {
     if self.exists(verbose) {
       return Ok(());
@@ -250,8 +364,28 @@ impl<'a> Container<'a> {
     info!("Creating container {}...", self.container_name().bold());
     self.create_container_base(verbose)?;
 
-    if let Some(init) = &self.config.init {
-      self.run_init_script(init, verbose)?;
+    let preamble = self.home_setup_script();
+    let extra_chowns = self.chown_dirs_script();
+    let postamble = self.workspace_chown_script();
+
+    let init = match (&preamble, &extra_chowns, &self.config.init, &postamble) {
+      (None, None, None, None) => None,
+      _ => {
+        let parts: Vec<&str> = [
+          preamble.as_deref(),
+          self.config.init.as_deref(),
+          extra_chowns.as_deref(),
+          postamble.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        Some(parts.join("\n"))
+      }
+    };
+
+    if let Some(script) = init {
+      self.run_init_script(&script, verbose)?;
     }
 
     Ok(())
@@ -275,20 +409,24 @@ impl<'a> Container<'a> {
 
     info!("Entering {}...", self.container_name().bold());
 
+    let mut args = vec!["exec".to_string(), "-it".to_string()];
     let shell = self.config.shell.as_deref().unwrap_or("sh");
-    let user_flag = self.docker_user_flag();
     let container_name = self.container_name();
-    let mut args = vec!["exec", "-it"];
-    if let Some(ref ug) = user_flag {
-      args.extend(["--user", ug]);
-    }
-    args.extend([container_name.as_str(), shell]);
+    let user_args = self.docker_user_args();
+
+    args.extend(user_args);
+    args.extend([container_name.clone(), shell.to_string()]);
 
     debug!("{} {}", &self.runtime, args.join(" "));
-    Command::new(&self.runtime)
-      .args(&args)
+
+    let status = Command::new(&self.runtime)
+      .args(args)
       .status()
-      .map_err(|e| format!("Failed to enter container: {}", e))
+      .map_err(|e| format!("Failed to enter container: {}", e));
+
+    self.stop(verbose)?;
+
+    status
   }
 
   pub fn exec(
@@ -299,26 +437,28 @@ impl<'a> Container<'a> {
   ) -> Result<(), String> {
     self.ensure_running(verbose)?;
 
-    let container_name = self.container_name();
     let shell = self.config.shell.as_deref().unwrap_or("sh");
-    let user_flag = self.docker_user_flag();
-    let mut args = vec!["exec"];
-    if interactive {
-      args.push("-it");
-    } else {
-      args.push("-t");
-    }
-    if let Some(ref ug) = user_flag {
-      args.extend(["--user", ug]);
-    }
-    args.push(&container_name);
-    args.push(shell);
-    args.push("-i");
-    args.push("-c");
+    let container_name = self.container_name();
+    let user_args = self.docker_user_args();
+    let mut args = vec!["exec".to_string()];
     let command_str = command.join(" ");
-    args.push(&command_str);
-    let full_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    debug!("{} {}", &self.runtime, full_args.join(" "));
+
+    if interactive {
+      args.push("-it".to_string());
+    } else {
+      args.push("-t".to_string());
+    }
+
+    args.extend(user_args);
+    args.extend([
+      container_name.clone(),
+      shell.to_string(),
+      "-i".to_string(),
+      "-c".to_string(),
+      command_str,
+    ]);
+
+    debug!("{} {}", &self.runtime, args.join(" "));
 
     let status = Command::new(&self.runtime)
       .args(&args)
@@ -363,7 +503,12 @@ impl<'a> Container<'a> {
     info!("Removing {}...", self.container_name().bold());
 
     let status = self.run_command(&["rm", &self.container_name()], verbose)?;
-    self.check_status(status, "remove container")
+    self.check_status(status, "remove container")?;
+
+    info!("Removing volume {}...", self.persist_volume_name().bold());
+    let _ = self.run_command(&["volume", "rm", &self.persist_volume_name()], verbose);
+
+    Ok(())
   }
 
   pub fn status(&self, verbose: bool) {
