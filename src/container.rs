@@ -506,7 +506,8 @@ chown {uid}:{gid} '{home}'"#,
     self.check_status(status, "remove container")?;
 
     info!("Removing volume {}...", self.persist_volume_name().bold());
-    let _ = self.run_command(&["volume", "rm", &self.persist_volume_name()], verbose);
+    let _ =
+      self.run_command(&["volume", "rm", &self.persist_volume_name()], verbose);
 
     Ok(())
   }
